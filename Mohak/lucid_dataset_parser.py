@@ -25,7 +25,7 @@ import argparse
 import ipaddress
 from sklearn.feature_extraction.text import CountVectorizer
 from multiprocessing import Process, Manager, Value, Queue
-from util_functions import *
+from Lucid.util_functions import *
 from datetime import datetime
 
 # Sample commands
