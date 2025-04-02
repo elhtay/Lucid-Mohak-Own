@@ -65,7 +65,8 @@ def get_files_by_size(directory, max_group_size, extension='.pcap'):
     return groups
 
 def main():
-    
+    dataset_folder = "/home/exjobbare25/dataset/"  # Default dataset folder
+    max_group_size = 1000000000/2 # 0.5 GB
     # Using argparse instead provides several advantages:
     parser = argparse.ArgumentParser(description='Sort and process dataset files by size')
     parser.add_argument('--output_folder', help='Output folder for processed files')
@@ -100,12 +101,12 @@ def main():
         group_dir = os.path.join(args.dataset_folder, f"group_{group_index}")
         os.makedirs(group_dir, exist_ok=True)
         
-        # Copy actual files to the temporary directory instead of creating symbolic links
+        # Move actual files to the temporary directory to free up disk space
         for file in files_to_process:
             dest_file = os.path.join(group_dir, os.path.basename(file))
             if not os.path.exists(dest_file):
-                print(f"Script Runner: Copying file {file} to {dest_file}")
-                shutil.copy2(file, dest_file)  # copy2 preserves file metadata
+                print(f"Script Runner: Moving file {file} to {dest_file}")
+                shutil.move(file, dest_file)  # move file to free up disk space
         
         # Build command for the parser
         cmd = [
