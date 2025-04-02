@@ -45,15 +45,24 @@ feature_list = OrderedDict([
 )
 
 def load_dataset(path):
-    filename = glob.glob(path)[0]
-    dataset = h5py.File(filename, "r")
-    set_x_orig = np.array(dataset["set_x"][:])  # features
-    set_y_orig = np.array(dataset["set_y"][:])  # labels
+    X_list = []
+    Y_list = []
+    files = glob.glob(path)
+    for filename in files:
+        with h5py.File(filename, "r") as dataset:
+            set_x_orig = np.array(dataset["set_x"][:])  # features
+            set_y_orig = np.array(dataset["set_y"][:])  # labels
 
-    X_train = np.reshape(set_x_orig, (set_x_orig.shape[0], set_x_orig.shape[1], set_x_orig.shape[2], 1))
-    Y_train = set_y_orig#.reshape((1, set_y_orig.shape[0]))
+        # Reshape features as needed (assumes consistent shape across files)
+        X = np.reshape(set_x_orig, (set_x_orig.shape[0], set_x_orig.shape[1], set_x_orig.shape[2], 1))
+        X_list.append(X)
+        Y_list.append(set_y_orig)
 
+    X_train = np.concatenate(X_list, axis=0)
+    Y_train = np.concatenate(Y_list, axis=0)
     return X_train, Y_train
+
+
 
 def scale_linear_bycolumn(rawpoints, mins,maxs,high=1.0, low=0.0):
     rng = maxs - mins
