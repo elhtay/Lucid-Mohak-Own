@@ -69,8 +69,6 @@ def main():
     dataset_folder = "./sample-dataset"  # Default dataset folder
     max_group_size = 1000000000/2  # 0.5 GB
    
-    
-    # Using argparse instead provides several advantages:
     parser = argparse.ArgumentParser(description='Sort and process dataset files by size')
     parser.add_argument('--output_folder', help='Output folder for processed files')
     parser.add_argument('--dataset_type', default= "DOS2019", help='Type of the dataset (DOS2017, DOS2018, DOS2019, SYN2020)')
@@ -81,6 +79,10 @@ def main():
     parser.add_argument('--max_group_size', default=max_group_size, type=int, help='Maximum total size (in bytes) for each group of files')
     parser.add_argument('--keep_temp_folders', action='store_true', help='Keep temporary group folders instead of cleaning them up')
     args = parser.parse_args()
+    
+    # Extract packets_per_flow value as an integer 
+    max_flow_len = int(args.packets_per_flow)
+    
     # Determine the starting group index based on existing "group_" directories
     existing_groups = [
         int(folder.split("_")[1])
@@ -195,11 +197,15 @@ def main():
         
         ############################################ Second step for this group #########
         # Build command for the second preprocessing step
+        
+        # Construct an output prefix using the group number.
+        group_prefix = f"{int(10)}t-{int(max_flow_len)}n-{args.dataset_id}-dataset-{new_group_index}"
         cmd2 = [
             "python3", "lucid_dataset_parser.py",
-            "--preprocess_folder", group_dir  # Use the current group directory for preprocessing
-        ]
-        
+            "--preprocess_folder", group_dir,
+            "--output_prefix", group_prefix    
+        ]   
+
         # Add output folder if specified
         print(f"Command to be executed for second step preprocessing: {cmd2}")
         if args.output_folder:

@@ -171,11 +171,12 @@ def process_pcap(pcap_file, dataset_type, in_labels, max_flow_len, labelled_flow
     start_time_window = -1
 
     pcap_name = pcap_file.split("/")[-1]
-    print("Processing file:", pcap_name)
+    print("‼️‼️‼️Processing file:", pcap_name)
 
     # Use keep_packets=False to prevent storing all packets in memory
     # and use_json=True to potentially speed up parsing.
     cap = pyshark.FileCapture(pcap_file, keep_packets=False, use_json=True)
+    print("‼️‼️----‼️‼️‼️Processing file:", pcap_name)
     
     for i, pkt in enumerate(cap):
         try:
@@ -220,8 +221,9 @@ def process_pcap(pcap_file, dataset_type, in_labels, max_flow_len, labelled_flow
         except Exception as e:
             print(f"Error processing packet {i}: {e}")
             continue
-
+        print("‼️ ‼️ --******--Processing file:", pcap_name)
     apply_labels(temp_dict, labelled_flows, in_labels, traffic_type)
+    print("‼️‼️‼️‼️--++++++++--Processing file:", pcap_name)
     print('Completed file {} in {} seconds.'.format(pcap_name, time.time() - start_time))
 
 
@@ -406,6 +408,10 @@ def main(argv):
                         help='Length of the time window')
 
     parser.add_argument('--no_split', help='Do not split the dataset', action='store_true')
+    
+    parser.add_argument('--output_prefix', nargs='+', type=str,
+                    help='Custom output prefix for generated dataset files')
+
 
     args = parser.parse_args()
 
@@ -559,7 +565,14 @@ def main(argv):
         total_ddos_examples = np.count_nonzero(y_full)
         total_benign_examples = total_examples - total_ddos_examples
 
-        output_file = output_folder + '/' + str(time_window) + 't-' + str(max_flow_len) + 'n-' + dataset_id + '-dataset'
+        ######### 
+        if args.output_prefix is not None:
+            # Use the provided output prefix directly
+            output_file = output_folder + '/' + args.output_prefix[0]
+        else:
+            # Use the default naming pattern
+            output_file = output_folder + '/' + str(time_window) + 't-' + str(max_flow_len) + 'n-' + dataset_id + '-dataset'
+        
         if args.no_split == True: # don't split the dataset
             norm_X_full = normalize_and_padding(X_full, mins, maxs, max_flow_len)
             #norm_X_full = padding(X_full,max_flow_len) # only padding
