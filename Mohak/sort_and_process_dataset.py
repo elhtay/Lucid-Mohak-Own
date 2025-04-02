@@ -56,7 +56,6 @@ def get_files_by_size(directory, max_group_size, extension='.pcap'):
             current_group.append((filepath, filesize))
  
             print(f"Script Runner: Current group contents: {current_group}")
-            # print tne value of current_size
             current_size += filesize
     
     # Add the last group if it's not empty
@@ -66,10 +65,6 @@ def get_files_by_size(directory, max_group_size, extension='.pcap'):
     return groups
 
 def main():
-    # These constants would hardcode values, making the script less flexible
-    dataset_folder = "./sample-dataset/"
-    max_group_size = 1000000000/2  # 0.5 GB
-    # max_group_size = 1000000000  # 1 GB
     
     # Using argparse instead provides several advantages:
     parser = argparse.ArgumentParser(description='Sort and process dataset files by size')
@@ -116,11 +111,11 @@ def main():
         cmd = [
             "python3", "lucid_dataset_parser.py",
             "--dataset_type", args.dataset_type,
-            "--dataset_folder", group_dir, 
+            "--dataset_folder", group_dir,  
             "--packets_per_flow", str(args.packets_per_flow),
             "--dataset_id", f"{args.dataset_id}",
             "--traffic_type", args.traffic_type,
-            "--time_window", "10" 
+            "--time_window", "10"
         ]
         
         # Add output folder if specified
@@ -139,7 +134,7 @@ def main():
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1  # Line buffered
+                bufsize=1 
             )
             
             # Print output in real-time
@@ -176,8 +171,69 @@ def main():
                 print(f"Script Runner: Error output: {e.stderr}")
         
         # Confirm completion of this group's processing
-        print(f"Script Runner: Group {group_index}/{len(file_groups)} fully processed. Moving to next group...\n")
-    
+        print(f"Script Runner: Group {group_index}/{len(file_groups)} fully processed. Moving to second step...\n")
+        
+        ############################################ Second step for this group #########
+        # Build command for the second preprocessing step
+        cmd2 = [
+            "python3", "lucid_dataset_parser.py",
+            "--preprocess_folder", group_dir  # Use the current group directory for preprocessing
+        ]
+        
+        # Add output folder if specified
+        print(f"Command to be executed for second step preprocessing: {cmd2}")
+        if args.output_folder:
+            cmd2.extend(["--output_folder", args.output_folder])
+        
+        # Run the second step preprocessing for this group
+        print(f"Script Runner: Starting second step preprocessing for group {group_index}...")
+        print(f"Script Runner: Running command: {' '.join(cmd2)}")
+        
+        # Use Popen to stream output in real-time without a timeout
+        try:
+            process = subprocess.Popen(
+                cmd2, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1  # Line buffered
+            )
+            
+            # Print output in real-time
+            complete_output = []
+            while True:
+                output_line = process.stdout.readline()
+                if output_line == '' and process.poll() is not None:
+                    break
+                if output_line:
+                    print(output_line.strip())
+                    complete_output.append(output_line.strip())
+            
+            # Get return code and any stderr output
+            return_code = process.poll()
+            _, stderr_output = process.communicate()
+            
+            if return_code != 0:
+                print(f"Script Runner: Second step preprocessing failed with return code: {return_code}")
+                if stderr_output:
+                    print(f"Script Runner: Error output: {stderr_output}")
+                raise subprocess.CalledProcessError(return_code, cmd2)
+            
+            print(f"Script Runner: Second step preprocessing completed successfully for group {group_index}")
+            
+        except KeyboardInterrupt:
+            print("\nScript Runner: Second step interrupted by user. Cleaning up...")
+            process.terminate()
+            process.wait()
+            raise
+        except Exception as e:
+            print(f"Script Runner: Error during second step for group {group_index}: {e}")
+            if hasattr(e, 'stderr') and e.stderr:
+                print(f"Script Runner: Error output: {e.stderr}")
+        
+        print(f"\n{'='*80}")
+        print(f"Script Runner: Group {group_index}/{len(file_groups)} fully processed with both steps.")
+        print(f"{'='*80}\n")
     
     if args.keep_temp_folders:
         print(f"Script Runner: Temporary group folders have been preserved. You can find them at: {args.dataset_folder}/group_*")
