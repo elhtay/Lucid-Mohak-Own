@@ -22,7 +22,8 @@ def get_files_by_size(directory, max_group_size, extension='.pcap'):
     """
     # Get all matching files with their sizes
     all_files = []
-    for root, _, files in os.walk(directory):
+    for root, dirs, files in os.walk(directory):
+        dirs[:] = [d for d in dirs if not d.startswith('group_')] # Ignore directories starting with 'group_'
         for filename in files:
             if filename.endswith(extension):
                 filepath = os.path.join(root, filename)
