@@ -34,6 +34,7 @@ def get_files_by_size(directory, max_group_size, extension='.pcap'):
     all_files.sort(key=lambda x: x[1], reverse=True)
     print(f"Script Runner: Found {len(all_files)} files in {directory} with extension {extension}")
     
+    # Group files using a simple bin packing approach
     groups = []
     current_group = []
     current_size = 0
@@ -65,8 +66,10 @@ def get_files_by_size(directory, max_group_size, extension='.pcap'):
     return groups
 
 def main():
-    dataset_folder = "/home/exjobbare25/dataset/"  # Default dataset folder
-    max_group_size = 1000000000/2 # 0.5 GB
+    dataset_folder = "./sample-dataset"  # Default dataset folder
+    max_group_size = 1000000000/2  # 0.5 GB
+   
+    
     # Using argparse instead provides several advantages:
     parser = argparse.ArgumentParser(description='Sort and process dataset files by size')
     parser.add_argument('--output_folder', help='Output folder for processed files')
@@ -78,7 +81,17 @@ def main():
     parser.add_argument('--max_group_size', default=max_group_size, type=int, help='Maximum total size (in bytes) for each group of files')
     parser.add_argument('--keep_temp_folders', action='store_true', help='Keep temporary group folders instead of cleaning them up')
     args = parser.parse_args()
-    
+    # Determine the starting group index based on existing "group_" directories
+    existing_groups = [
+        int(folder.split("_")[1])
+        for folder in os.listdir(args.dataset_folder)
+        if folder.startswith("group_") and folder.split("_")[1].isdigit()
+    ]
+    if existing_groups:
+        start_group_index = max(existing_groups)
+    else:
+        start_group_index = 0
+
     # Get files grouped by maximum size
     file_groups = get_files_by_size(args.dataset_folder, args.max_group_size)
     total_processed = 0
@@ -87,6 +100,9 @@ def main():
     
     # Process each group
     for group_index, group in enumerate(file_groups, 1):
+        # here waite for 1 minute for the command to complete
+        # provide a timeout of 60 seconds
+        
         
         # Extract just the filepaths from the (filepath, filesize) tuples
         files_to_process = [f[0] for f in group]
@@ -98,7 +114,9 @@ def main():
         print(f"Script Runner: \n{datetime.now()} - Processing group {group_index}/{len(file_groups)} with {len(files_to_process)} files (total {total_group_size} bytes)...")
         
         # Create a temporary directory for this group
-        group_dir = os.path.join(args.dataset_folder, f"group_{group_index}")
+        new_group_index = start_group_index + group_index
+        group_dir = os.path.join(args.dataset_folder, f"group_{new_group_index}")
+
         os.makedirs(group_dir, exist_ok=True)
         
         # Move actual files to the temporary directory to free up disk space
@@ -107,6 +125,7 @@ def main():
             if not os.path.exists(dest_file):
                 print(f"Script Runner: Moving file {file} to {dest_file}")
                 shutil.move(file, dest_file)  # move file to free up disk space
+
         
         # Build command for the parser
         cmd = [
@@ -135,7 +154,7 @@ def main():
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1 
+                bufsize=1  # Line buffered
             )
             
             # Print output in real-time
