@@ -43,7 +43,6 @@ feature_list = OrderedDict([
     ('UDP_length',[0,1<<16]),
     ('ICMP_type',[0,1<<8])]
 )
-
 def load_dataset(path):
     X_list = []
     Y_list = []
@@ -52,12 +51,19 @@ def load_dataset(path):
         with h5py.File(filename, "r") as dataset:
             set_x_orig = np.array(dataset["set_x"][:])  # features
             set_y_orig = np.array(dataset["set_y"][:])  # labels
-
-        # Reshape features as needed (assumes consistent shape across files)
+            print("set_x_orig.shape =", set_x_orig.shape)
+            # Check if the dataset has the expected dimensions and is non-empty
+            if set_x_orig.ndim < 3 or set_x_orig.size == 0:
+                print("Warning: skipping file", filename, "because it contains an empty or malformed dataset")
+                continue
+        # Reshape features as needed
         X = np.reshape(set_x_orig, (set_x_orig.shape[0], set_x_orig.shape[1], set_x_orig.shape[2], 1))
         X_list.append(X)
         Y_list.append(set_y_orig)
 
+    if not X_list:
+        raise ValueError("No valid dataset files found.")
+        
     X_train = np.concatenate(X_list, axis=0)
     Y_train = np.concatenate(Y_list, axis=0)
     return X_train, Y_train
@@ -134,5 +140,3 @@ def padding(X,max_flow_len):
                               constant_values=(0, 0))  # padding
         padded_X.append(padded_sample)
     return padded_X
-
-
