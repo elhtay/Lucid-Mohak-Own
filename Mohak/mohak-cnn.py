@@ -334,6 +334,12 @@ def main(argv):
                 X = np.expand_dims(X, axis=3)
                 pt0 = time.time()
                 Y_pred = np.squeeze(model.predict(X, batch_size=2048) > 0.5,axis=1)
+                ip_addresses = []
+                for i in range(len(Y_pred)):
+                    if Y_pred[i] == True:
+                        ip_addresses.append(samples[i]['ip_src'])
+                print("Predicted IP addresses: ", ip_addresses)
+            
                 pt1 = time.time()
                 prediction_time = pt1 - pt0
 
