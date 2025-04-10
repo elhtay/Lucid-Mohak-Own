@@ -24,6 +24,7 @@ import random as rn
 import os
 import csv
 import pprint
+import json
 from util_functions import *
 # Seed Random Numbers
 os.environ['PYTHONHASHSEED']=str(SEED)
@@ -300,7 +301,7 @@ def main(argv):
             cap =  pyshark.LiveCapture(interface=args.predict_live)
             data_source = args.predict_live
 
-        print ("Prediction on network traffic from: ", data_source)
+        #print ("Prediction on network traffic from: ", data_source)
 
         # load the labels, if available
         labels = parse_labels(args.dataset_type, args.attack_net, args.victim_net)
@@ -321,6 +322,7 @@ def main(argv):
 
         mins, maxs = static_min_max(time_window)
 
+        ip_addresses = set()
         while (True):
             samples = process_live_traffic(cap, args.dataset_type, labels, max_flow_len, traffic_type="all", time_window=time_window)
             if len(samples) > 0:
@@ -334,11 +336,10 @@ def main(argv):
                 X = np.expand_dims(X, axis=3)
                 pt0 = time.time()
                 Y_pred = np.squeeze(model.predict(X, batch_size=2048) > 0.5,axis=1)
-                ip_addresses = []
+
                 for i in range(len(Y_pred)):
                     if Y_pred[i] == True:
-                        ip_addresses.append(samples[i]['ip_src'])
-                print("Predicted IP addresses: ", ip_addresses)
+                        ip_addresses.add(samples[i][0][0])
             
                 pt1 = time.time()
                 prediction_time = pt1 - pt0
@@ -348,9 +349,10 @@ def main(argv):
                 predict_file.flush()
 
             elif isinstance(cap, pyshark.FileCapture) == True:
-                print("\nNo more packets in file ", data_source)
+                #print("\nNo more packets in file ", data_source)
                 break
 
+        print(json.dumps(list(ip_addresses)))
         predict_file.close()
 
 def report_results(Y_true, Y_pred, packets, model_name, data_source, prediction_time, writer):
