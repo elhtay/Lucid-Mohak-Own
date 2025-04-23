@@ -150,6 +150,9 @@ def main(argv):
 
     parser.add_argument('-y', '--dataset_type', default=None, type=str,
                         help='Type of the dataset. Available options are: DOS2017, DOS2018, DOS2019, SYN2020')
+    # Added by Lars Breum Hansen @ LTH
+    parser.add_argument('-po', '--prediction_offset', default=0, type=int,
+                        help='The prediction_offset of the prediction. Useful if you do not want to analyse an entire PCAP file')
 
     args = parser.parse_args()
 
@@ -184,7 +187,8 @@ def main(argv):
             print ("\nCurrent dataset folder: ", dataset_folder)
 
            # model_name = dataset_name + "-LUCID"
-            model_name = dataset_name + "-Mohak"
+           # model_name = dataset_name + "-Mohak"
+            model_name = dataset_name + "-Own"
            # keras_classifier = KerasClassifier(build_fn=Conv2DModel,model_name=model_name, input_shape=X_train.shape[1:],kernel_col=X_train.shape[2])
             keras_classifier = KerasClassifier(build_fn=Conv1DModel, model_name=model_name, input_shape=X_train.shape[1:])
             rnd_search_cv = GridSearchCV(keras_classifier, hyperparamters, cv=args.cross_validation if args.cross_validation > 1 else [(slice(None), slice(None))], refit=True, return_train_score=True)
@@ -297,6 +301,10 @@ def main(argv):
             pcap_file = args.predict_live
             cap = pyshark.FileCapture(pcap_file)
             data_source = pcap_file.split('/')[-1].strip()
+
+            # getting the prediction_offset from the argument //LBH @ LTH
+            prediction_offset = args.prediction_offset
+
         else:
             cap =  pyshark.LiveCapture(interface=args.predict_live)
             data_source = args.predict_live
@@ -315,32 +323,47 @@ def main(argv):
 
         model_filename = model_path.split('/')[-1].strip()
         filename_prefix = model_filename.split('n')[0] + 'n-'
-        time_window = int(filename_prefix.split('t-')[0])
+        time_window = 10 # analyse the data in 10s intervals
+        #time_window = int(filename_prefix.split('t-')[0])
+        #print("time_window: ", time_window)
         max_flow_len = int(filename_prefix.split('t-')[1].split('n-')[0])
         model_name_string = model_filename.split(filename_prefix)[1].strip().split('.')[0].strip()
         model = load_model(args.model)
 
         mins, maxs = static_min_max(time_window)
-
         ip_addresses = set()
+        benign_ips = set()
+
         while (True):
-            samples = process_live_traffic(cap, args.dataset_type, labels, max_flow_len, traffic_type="all", time_window=time_window)
+            samples = process_live_traffic(cap, args.dataset_type, labels, max_flow_len, prediction_offset, traffic_type="all", time_window=time_window)
+            print("len(samples): ",len(samples))
             if len(samples) > 0:
+                #print("length samples: ", len(samples))
                 X,Y_true,keys = dataset_to_list_of_fragments(samples)
                 X = np.array(normalize_and_padding(X, mins, maxs, max_flow_len))
+
                 if labels is not None:
                     Y_true = np.array(Y_true)
                 else:
                     Y_true = None
 
                 X = np.expand_dims(X, axis=3)
+
                 pt0 = time.time()
                 Y_pred = np.squeeze(model.predict(X, batch_size=2048) > 0.5,axis=1)
 
+               # ip_addresses.clear()
                 for i in range(len(Y_pred)):
                     if Y_pred[i] == True:
-                        ip_addresses.add(samples[i][0][0])
-            
+
+                        ip = samples[i][0][0]
+                        ip_addresses.add(ip)
+                    else:
+                        ip = samples[i][0][0]
+                        benign_ips.add(ip)
+
+                # print("malicious ip_addresses: ", ip_addresses)
+                # print("benign ips: ", benign_ips)
                 pt1 = time.time()
                 prediction_time = pt1 - pt0
 
@@ -352,7 +375,15 @@ def main(argv):
                 #print("\nNo more packets in file ", data_source)
                 break
 
-        print(json.dumps(list(ip_addresses)))
+        
+       # print('ip addresses: ',ip_addresses)
+        
+        num_to_kill = 10
+
+       # kill_list = dict(sorted(ip_addresses.items(), key=lambda item: item[1], reverse=True)[:num_to_kill])
+        ip_list = list(ip_addresses)
+
+        print(json.dumps(ip_list))
         predict_file.close()
 
 def report_results(Y_true, Y_pred, packets, model_name, data_source, prediction_time, writer):
@@ -377,7 +408,7 @@ def report_results(Y_true, Y_pred, packets, model_name, data_source, prediction_
                'Samples': Y_pred.shape[0], 'DDOS%': ddos_rate, 'Accuracy': "N/A", 'F1Score': "N/A",
                'TPR': "N/A", 'FPR': "N/A", 'TNR': "N/A", 'FNR': "N/A", 'Source': data_source}
    # pprint.pprint(row, sort_dicts=False)
-    writer.writerow(row)
+   # writer.writerow(row)
 
 if __name__ == "__main__":
     main(sys.argv[1:])

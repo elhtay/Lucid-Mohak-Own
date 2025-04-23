@@ -27,6 +27,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from multiprocessing import Process, Manager, Value, Queue
 from util_functions import *
 from datetime import datetime
+from datetime import datetime, timezone
 
 # Sample commands
 # split a pcap file into smaller chunks to leverage multi-core CPUs: tcpdump -r dataset.pcap -w dataset-chunk -C 1000
@@ -131,6 +132,7 @@ def parse_packet(pkt):
         protocols_value = int(np.dot(np.array(protocols), powers_of_two))
         pf.features_list.append(protocols_value)
 
+
         protocol = int(pkt.ip.proto)
         tmp_id[4] = protocol
         if pkt.transport_layer != None:
@@ -226,8 +228,9 @@ def process_pcap(pcap_file, dataset_type, in_labels, max_flow_len, labelled_flow
 
 
 # Transforms live traffic into input samples for inference
-def process_live_traffic(cap, dataset_type, in_labels, max_flow_len, traffic_type='all',time_window=TIME_WINDOW):
+def process_live_traffic(cap, dataset_type, in_labels, max_flow_len, prediction_offset, traffic_type='all',time_window=TIME_WINDOW):
     start_time = time.time()
+
     temp_dict = OrderedDict()
     labelled_flows = []
 
@@ -244,12 +247,18 @@ def process_live_traffic(cap, dataset_type, in_labels, max_flow_len, traffic_typ
         while time.time() < time_window:
             try:
                 pkt = cap.next()
+
+                if pkt.sniff_time.timestamp() < float(prediction_offset): # if packet is after prediction_offset, parse.
+                    continue
+               # print(pkt.sniff_time.timestamp())
                 pf = parse_packet(pkt)
+
                 temp_dict = store_packet(pf,temp_dict,start_time_window,max_flow_len)
             except:
                 break
 
     apply_labels(temp_dict,labelled_flows, in_labels,traffic_type)
+    
     return labelled_flows
 
 def store_packet(pf,temp_dict,start_time_window, max_flow_len):

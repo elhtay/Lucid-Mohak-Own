@@ -26,6 +26,8 @@ import ipaddress
 from sklearn.feature_extraction.text import CountVectorizer
 from multiprocessing import Process, Manager, Value, Queue
 from util_functions import *
+from datetime import datetime
+from datetime import datetime, timezone
 
 # Sample commands
 # split a pcap file into smaller chunks to leverage multi-core CPUs: tcpdump -r dataset.pcap -w dataset-chunk -C 1000
@@ -40,12 +42,13 @@ IDS2017_DDOS_FLOWS = {'attackers': ['172.16.0.1'],
 
 CUSTOM_DDOS_SYN = {'attackers': ['11.0.0.' + str(x) for x in range(1,255)],
                       'victims': ['10.42.0.2']}
-
 DOS2019_FLOWS = {'attackers': ['172.16.0.5'], 'victims': ['192.168.50.1', '192.168.50.4']}
-#DOS2019_FLOWS = {'attackers': ['244.174.48.40','222.109.217.68','214.221.36.5','253.99.92.111','155.240.72.201','136.224.219.25','71.88.52.74','134.147.163.170','208.204.43.199','23.144.220.60'], 'victims': ['192.168.132.1']}
+#DOS2019_FLOWS = {'attackers': ['201.246.134.31', '230.13.256.3', '207.235.58.104', '97.67.247.171', '64.66.125.77',  '231.86.142.178', '201.246.134.31'], 'victims': ['192.168.182.209']}
+#DOS2019_FLOWS = {'attackers': ['201.246.134.31'], 'victims': ['192.168.132.1', '192.168.132.64']}
+#latest 14 march
+#DOS2019_FLOWS = {'attackers': ['244.174.48.40', '222.109.217.68', '214.221.36.5', '253.99.92.111', '155.240.72.201', '136.224.219.25', '71.88.52.74', '134.147.163.170', '208.204.43.199', '23.144.220.60'], 'victims': ['192.168.132.1']}
 #DOS2019_FLOWS = {'attackers': ['10.7.0.2', '10.7.0.3', '10.7.0.4', '10.7.0.5', '10.7.0.6', '10.7.0.7', '10.7.0.8', '10.7.0.9', '10.7.0.10', '10.7.0.11', '10.7.0.12', '10.7.0.13', '10.7.0.14', '10.7.0.15', '10.7.0.16','10.7.0.17', '10.7.0.18', '10.7.0.19', '10.7.0.20', '10.7.0.21'],
-            #       'victims': ['10.2.0.2', '10.3.0.2']}
-
+       #            'victims': ['10.2.0.2', '10.3.0.2']}
 DDOS_ATTACK_SPECS = {
     'DOS2017' : IDS2017_DDOS_FLOWS,
     'DOS2018' : IDS2018_DDOS_FLOWS,
@@ -65,7 +68,7 @@ class packet_features:
         self.id_fwd = (0,0,0,0,0) # 5-tuple src_ip_addr, src_port,,dst_ip_addr,dst_port,protocol
         self.id_bwd = (0,0,0,0,0)  # 5-tuple src_ip_addr, src_port,,dst_ip_addr,dst_port,protocol
         self.features_list = []
-
+        self.label = None 
 
     def __str__(self):
         return "{} -> {}".format(self.id_fwd, self.features_list)
@@ -107,7 +110,7 @@ def parse_labels(dataset_type=None, attackers=None,victims=None, label=1):
                 output_dict[key_fwd] = label
             if key_bwd not in output_dict:
                 output_dict[key_bwd] = label
-
+   # print(output_dict)
     return output_dict
 
 def parse_packet(pkt):
@@ -155,9 +158,7 @@ def parse_packet(pkt):
 
         pf.id_fwd = (tmp_id[0], tmp_id[1], tmp_id[2], tmp_id[3], tmp_id[4])
         pf.id_bwd = (tmp_id[2], tmp_id[3], tmp_id[0], tmp_id[1], tmp_id[4])
-        print("Packet features:" ,pf)
-        print("Len:", len(pf.features_list))
-        
+       
         return pf
 
     except AttributeError as e:
@@ -165,34 +166,70 @@ def parse_packet(pkt):
         return None
 
 # Offline preprocessing of pcap files for model training, validation and testing
-def process_pcap(pcap_file,dataset_type,in_labels,max_flow_len,labelled_flows,max_flows=0, traffic_type='all',time_window=TIME_WINDOW):
+def process_pcap(pcap_file, dataset_type, in_labels, max_flow_len, labelled_flows, max_flows=0, traffic_type='all', time_window=TIME_WINDOW):
     start_time = time.time()
     temp_dict = OrderedDict()
     start_time_window = -1
 
     pcap_name = pcap_file.split("/")[-1]
-    print("Processing file: ", pcap_name)
+    print("Processing file:", pcap_name)
 
-    cap = pyshark.FileCapture(pcap_file)
+    # Use keep_packets=False to prevent storing all packets in memory
+    # and use_json=True to potentially speed up parsing.
+    cap = pyshark.FileCapture(pcap_file, keep_packets=False, use_json=True)
+    
     for i, pkt in enumerate(cap):
-        if i % 1000 == 0:
-            print(pcap_name + " packet #", i)
+        try:
+            #day1
+            date_str_from = "2018-01-12 10:53:00"
+            date_str_to = "2018-01-12 11:03:00"
+            date_from = datetime.strptime(date_str_from, "%Y-%m-%d %H:%M:%S")
+            date_to = datetime.strptime(date_str_to, "%Y-%m-%d %H:%M:%S")
+            #day2
+            date_str_from_2 = "2018-03-11 12:45:00"
+            date_str_to_2 = "2018-03-11 13:09:00"
+            date_from_2 = datetime.strptime(date_str_from_2, "%Y-%m-%d %H:%M:%S")
+            date_to_2 = datetime.strptime(date_str_to_2, "%Y-%m-%d %H:%M:%S")
+            
+            # Convert pkt.frame_info.time_epoch to datetime
+            try:
+                pkt_time = datetime.fromtimestamp(float(pkt.frame_info.time_epoch))
+            except Exception as e:
+                # Skip packets with unconvertible timestamps
+                continue
 
-        # start_time_window is used to group packets/flows captured in a time-window
-        if start_time_window == -1 or float(pkt.sniff_timestamp) > start_time_window + time_window:
-            start_time_window = float(pkt.sniff_timestamp)
+            # Ensure the packet has an IP layer before accessing it
+            if hasattr(pkt, 'ip'):
+                if ((date_from > pkt_time or date_to < pkt_time) and (date_from_2 > pkt_time or date_to_2 < pkt_time)) and pkt.ip.src in DOS2019_FLOWS['attackers']:
+                    continue
+            else:
+                # Skip packets without an IP layer
+                continue
 
-        pf = parse_packet(pkt)
-        store_packet(pf, temp_dict, start_time_window, max_flow_len)
-        if max_flows > 0 and len(temp_dict) >= max_flows:
-            break
+            if i % 1000 == 0:
+                print(pcap_name + " packet #", i)
+
+            # Group packets/flows captured in the current time window
+            if start_time_window == -1 or float(pkt.sniff_timestamp) > start_time_window + time_window:
+                start_time_window = float(pkt.sniff_timestamp)
+
+            pf = parse_packet(pkt)
+            store_packet(pf, temp_dict, start_time_window, max_flow_len)
+            if max_flows > 0 and len(temp_dict) >= max_flows:
+                break
+
+        except Exception as e:
+            print(f"Error processing packet {i}: {e}")
+            continue
 
     apply_labels(temp_dict, labelled_flows, in_labels, traffic_type)
     print('Completed file {} in {} seconds.'.format(pcap_name, time.time() - start_time))
 
+
 # Transforms live traffic into input samples for inference
-def process_live_traffic(cap, dataset_type, in_labels, max_flow_len, traffic_type='all',time_window=TIME_WINDOW):
+def process_live_traffic(cap, dataset_type, in_labels, max_flow_len, prediction_offset, traffic_type='all',time_window=TIME_WINDOW):
     start_time = time.time()
+
     temp_dict = OrderedDict()
     labelled_flows = []
 
@@ -209,12 +246,18 @@ def process_live_traffic(cap, dataset_type, in_labels, max_flow_len, traffic_typ
         while time.time() < time_window:
             try:
                 pkt = cap.next()
+                #print(pkt.sniff_time.timestamp())
+
+                if pkt.sniff_time.timestamp() < float(prediction_offset): # if packet is after prediction_offset, parse.
+                    continue
                 pf = parse_packet(pkt)
+
                 temp_dict = store_packet(pf,temp_dict,start_time_window,max_flow_len)
             except:
                 break
 
     apply_labels(temp_dict,labelled_flows, in_labels,traffic_type)
+    
     return labelled_flows
 
 def store_packet(pf,temp_dict,start_time_window, max_flow_len):

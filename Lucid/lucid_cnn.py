@@ -24,8 +24,8 @@ import random as rn
 import os
 import csv
 import pprint
+import json
 from util_functions import *
-import pandas as pd
 # Seed Random Numbers
 os.environ['PYTHONHASHSEED']=str(SEED)
 np.random.seed(SEED)
@@ -33,7 +33,7 @@ rn.seed(SEED)
 config = tf.compat.v1.ConfigProto(inter_op_parallelism_threads=1)
 
 from tensorflow.keras.optimizers import Adam,SGD
-from tensorflow.keras.layers import Input, Dense, Activation, Flatten, Conv2D
+from tensorflow.keras.layers import Input, Dense, Activation, Flatten, Conv2D, Conv1D, MaxPooling1D
 from tensorflow.keras.layers import Dropout, GlobalMaxPooling2D
 from tensorflow.keras.models import Model, Sequential, load_model, save_model
 from sklearn.metrics import f1_score, accuracy_score, confusion_matrix
@@ -42,7 +42,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from lucid_dataset_parser import *
-
+from collections import Counter
 import tensorflow.keras.backend as K
 tf.random.set_seed(SEED)
 K.set_image_data_format('channels_last')
@@ -59,11 +59,11 @@ PREDICT_HEADER = ['Model', 'Time', 'Packets', 'Samples', 'DDOS%', 'Accuracy', 'F
 PATIENCE = 10
 DEFAULT_EPOCHS = 1000
 hyperparamters = {
-    "learning_rate": [0.1,0.01],
-    "batch_size": [1024,2048],
-    "kernels": [32,64],
-    "regularization" : [None,'l1'],
-    "dropout" : [None,0.2]
+    "learning_rate": [0.009],
+    "batch_size": [10],
+    #"kernels": [32,64],
+    #"regularization" : [None,'l1'],
+   # "dropout" : [None,0.2]
 }
 
 def Conv2DModel(model_name,input_shape,kernel_col, kernels=64,kernel_rows=3,learning_rate=0.01,regularization=None,dropout=None):
@@ -84,6 +84,30 @@ def Conv2DModel(model_name,input_shape,kernel_col, kernels=64,kernel_rows=3,lear
     print(model.summary())
     compileModel(model, learning_rate)
     return model
+
+def Conv1DModel(model_name, input_shape, filters1=64, kernel_size1=3, filters2=32, kernel_size2=3,
+                dense_units=8, learning_rate=0.001, loss="mean_absolute_error"):
+    # Clear any previous model from memory.
+    K.clear_session()
+    
+    # Build the Sequential model.
+    model = Sequential(name=model_name)
+    model.add(Conv1D(filters=filters1, kernel_size=kernel_size1, activation="relu",
+                     input_shape=input_shape, name="conv1d_1"))
+    model.add(Conv1D(filters=filters2, kernel_size=kernel_size2, activation="relu", name="conv1d_2"))
+    model.add(MaxPooling1D(pool_size=2, name="maxpool1d"))
+    model.add(Flatten(name="flatten"))
+   # model.add(Dense(dense_units, name="dense"))
+    model.add(Dense(1, activation='sigmoid', name="output"))
+
+
+    # Compile the model.
+    model.compile(loss=loss, optimizer=Adam(learning_rate=learning_rate), metrics=["accuracy"])
+    
+    # Print model summary.
+    print(model.summary())
+    return model
+
 
 def compileModel(model,lr):
     # optimizer = SGD(learning_rate=lr, momentum=0.0, decay=0.0, nesterov=False)
@@ -126,6 +150,10 @@ def main(argv):
 
     parser.add_argument('-y', '--dataset_type', default=None, type=str,
                         help='Type of the dataset. Available options are: DOS2017, DOS2018, DOS2019, SYN2020')
+    
+    # Added by Lars Breum Hansen @ LTH
+    parser.add_argument('-po', '--prediction_offset', default=0, type=int,
+                        help='The prediction_offset of the prediction. Useful if you do not want to analyse an entire PCAP file. Starts the analysis at that the offset')
 
     args = parser.parse_args()
 
@@ -145,28 +173,25 @@ def main(argv):
             X_train, Y_train = load_dataset(dataset_folder + "/*" + '-train.hdf5')
             X_val, Y_val = load_dataset(dataset_folder + "/*" + '-val.hdf5')
 
+            X_train = np.squeeze(X_train, axis=-1)  # New shape: (samples, 10, 11)
+            X_val = np.squeeze(X_val, axis=-1) 
             X_train, Y_train = shuffle(X_train, Y_train, random_state=SEED)
-            # Convert X_train to a DataFrame to access columns attribute
-            """X_train_reshaped = X_train.reshape(X_train.shape[0], -1) 
-            column_names = [f'Feature {i}' for i in range(X_train_reshaped.shape[1])] 
-            X_train_df = pd.DataFrame(X_train_reshaped, columns=column_names) 
-            print("Training columns:", X_train_df.columns)"""
-            
-            print(X_train.shape)
-            
             X_val, Y_val = shuffle(X_val, Y_val, random_state=SEED)
 
             # get the time_window and the flow_len from the filename
             train_file = glob.glob(dataset_folder + "/*" + '-train.hdf5')[0]
             filename = train_file.split('/')[-1].strip()
             time_window = int(filename.split('-')[0].strip().replace('t', ''))
+            print("time_window: ", time_window)
             max_flow_len = int(filename.split('-')[1].strip().replace('n', ''))
             dataset_name = filename.split('-')[2].strip()
 
             print ("\nCurrent dataset folder: ", dataset_folder)
 
             model_name = dataset_name + "-LUCID"
+           # model_name = dataset_name + "-Mohak"
             keras_classifier = KerasClassifier(build_fn=Conv2DModel,model_name=model_name, input_shape=X_train.shape[1:],kernel_col=X_train.shape[2])
+            #keras_classifier = KerasClassifier(build_fn=Conv1DModel, model_name=model_name, input_shape=X_train.shape[1:])
             rnd_search_cv = GridSearchCV(keras_classifier, hyperparamters, cv=args.cross_validation if args.cross_validation > 1 else [(slice(None), slice(None))], refit=True, return_train_score=True)
 
             es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=PATIENCE)
@@ -185,10 +210,15 @@ def main(argv):
             # Alternatively, to save time, one could set refit=False and load the best model from the filesystem to test its performance
             #best_model = load_model(best_model_filename + '.h5')
 
-            Y_pred_val = (best_model.predict(X_val) > 0.5)
+            """Y_pred_val = (best_model.predict(X_val) > 0.5)
             Y_true_val = Y_val.reshape((Y_val.shape[0], 1))
             f1_score_val = f1_score(Y_true_val, Y_pred_val)
+            accuracy = accuracy_score(Y_true_val, Y_pred_val)"""
+            Y_pred_val = (best_model.predict(X_val) > 0.5).astype(int).ravel()
+            Y_true_val = Y_val.ravel()
+            f1_score_val = f1_score(Y_true_val, Y_pred_val)
             accuracy = accuracy_score(Y_true_val, Y_pred_val)
+
 
             # save best model performance on the validation set
             val_file = open(best_model_filename + '.csv', 'w', newline='')
@@ -205,6 +235,7 @@ def main(argv):
             print("Best parameters: ", rnd_search_cv.best_params_)
             print("Best model path: ", best_model_filename)
             print("F1 Score of the best model on the validation set: ", f1_score_val)
+            print("Confusion Matrix: ", confusion_matrix(Y_true_val, Y_pred_val))
 
     if args.predict is not None:
         predict_file = open(OUTPUT_FOLDER + 'predictions-' + time.strftime("%Y%m%d-%H%M%S") + '.csv', 'a', newline='')
@@ -271,11 +302,15 @@ def main(argv):
             pcap_file = args.predict_live
             cap = pyshark.FileCapture(pcap_file)
             data_source = pcap_file.split('/')[-1].strip()
+
+            # getting the prediction_offset from the argument //LBH @ LTH
+            prediction_offset = args.prediction_offset
+
         else:
             cap =  pyshark.LiveCapture(interface=args.predict_live)
             data_source = args.predict_live
 
-        print ("Prediction on network traffic from: ", data_source)
+        #print ("Prediction on network traffic from: ", data_source)
 
         # load the labels, if available
         labels = parse_labels(args.dataset_type, args.attack_net, args.victim_net)
@@ -289,16 +324,20 @@ def main(argv):
 
         model_filename = model_path.split('/')[-1].strip()
         filename_prefix = model_filename.split('n')[0] + 'n-'
-        time_window = int(filename_prefix.split('t-')[0])
+        #time_window = int(filename_prefix.split('t-')[0])
+        time_window = 10 # should be the time since the last prediction
+        #print("time_window: ", time_window)
         max_flow_len = int(filename_prefix.split('t-')[1].split('n-')[0])
         model_name_string = model_filename.split(filename_prefix)[1].strip().split('.')[0].strip()
         model = load_model(args.model)
 
         mins, maxs = static_min_max(time_window)
 
+        ip_addresses = set()
         while (True):
-            samples = process_live_traffic(cap, args.dataset_type, labels, max_flow_len, traffic_type="all", time_window=time_window)
+            samples = process_live_traffic(cap, args.dataset_type, labels, max_flow_len, prediction_offset, traffic_type="all", time_window=time_window)
             if len(samples) > 0:
+                #print("length samples: ",len(samples))
                 X,Y_true,keys = dataset_to_list_of_fragments(samples)
                 X = np.array(normalize_and_padding(X, mins, maxs, max_flow_len))
                 if labels is not None:
@@ -309,6 +348,16 @@ def main(argv):
                 X = np.expand_dims(X, axis=3)
                 pt0 = time.time()
                 Y_pred = np.squeeze(model.predict(X, batch_size=2048) > 0.5,axis=1)
+
+               # print('predictions: ', Y_pred)
+                ip_addresses.clear() # reset the list every time so that we only use the last prediction
+                for i in range(len(Y_pred)):
+                    if Y_pred[i] == True:
+
+                        ip = samples[i][0][0]
+                        ip_addresses.add(ip)
+
+                
                 pt1 = time.time()
                 prediction_time = pt1 - pt0
 
@@ -317,9 +366,18 @@ def main(argv):
                 predict_file.flush()
 
             elif isinstance(cap, pyshark.FileCapture) == True:
-                print("\nNo more packets in file ", data_source)
+                #print("\nNo more packets in file ", data_source)
                 break
 
+        
+       # print('ip addresses: ',ip_addresses)
+        
+        num_to_kill = 10
+
+       # kill_list = dict(sorted(ip_addresses.items(), key=lambda item: item[1], reverse=True)[:num_to_kill])
+        ip_list = list(ip_addresses)
+
+        print(json.dumps(ip_list))
         predict_file.close()
 
 def report_results(Y_true, Y_pred, packets, model_name, data_source, prediction_time, writer):
@@ -343,8 +401,8 @@ def report_results(Y_true, Y_pred, packets, model_name, data_source, prediction_
         row = {'Model': model_name, 'Time': '{:04.3f}'.format(prediction_time), 'Packets': packets,
                'Samples': Y_pred.shape[0], 'DDOS%': ddos_rate, 'Accuracy': "N/A", 'F1Score': "N/A",
                'TPR': "N/A", 'FPR': "N/A", 'TNR': "N/A", 'FNR': "N/A", 'Source': data_source}
-    pprint.pprint(row, sort_dicts=False)
-    writer.writerow(row)
+   # pprint.pprint(row, sort_dicts=False)
+   # writer.writerow(row)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
