@@ -336,7 +336,7 @@ def main(argv):
 
         while (True):
             samples = process_live_traffic(cap, args.dataset_type, labels, max_flow_len, prediction_offset, traffic_type="all", time_window=time_window)
-            print("len(samples): ",len(samples))
+            #print("len(samples): ",len(samples))
             if len(samples) > 0:
                 #print("length samples: ", len(samples))
                 X,Y_true,keys = dataset_to_list_of_fragments(samples)
@@ -378,9 +378,10 @@ def main(argv):
         
        # print('ip addresses: ',ip_addresses)
         
-        num_to_kill = 10
+     #   num_to_kill = 10
 
        # kill_list = dict(sorted(ip_addresses.items(), key=lambda item: item[1], reverse=True)[:num_to_kill])
+       # ip_list = list(ip_addresses.difference(benign_ips)) #only kill UEs that are malicious AND not benign
         ip_list = list(ip_addresses)
 
         print(json.dumps(ip_list))
