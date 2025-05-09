@@ -14,6 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+# This file is originally part of the LUCID project, as mentioned above.
+# It has been modified to fit the needs of the master thesis project.
+# The original file can be found at: https://github.com/doriguzzi/lucid-ddos?tab=readme-ov-file#lucid-a-practical-lightweight-deep-learning-solution-for-ddos-attack-detection
+
 import sys
 import time
 import pyshark

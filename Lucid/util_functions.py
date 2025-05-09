@@ -14,7 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
+
+
+# This file is originally part of the LUCID project, as mentioned above.
+# It has been modified to fit the needs of the master thesis project.
+# The original file can be found at: https://github.com/doriguzzi/lucid-ddos?tab=readme-ov-file#lucid-a-practical-lightweight-deep-learning-solution-for-ddos-attack-detection
 import h5py
 import glob
 from collections import OrderedDict
@@ -45,14 +49,28 @@ feature_list = OrderedDict([
 )
 
 def load_dataset(path):
-    filename = glob.glob(path)[0]
-    dataset = h5py.File(filename, "r")
-    set_x_orig = np.array(dataset["set_x"][:])  # features
-    set_y_orig = np.array(dataset["set_y"][:])  # labels
+    X_list = []
+    Y_list = []
+    files = glob.glob(path)
+    for filename in files:
+        with h5py.File(filename, "r") as dataset:
+            set_x_orig = np.array(dataset["set_x"][:])  # features
+            set_y_orig = np.array(dataset["set_y"][:])  # labels
+            print("set_x_orig.shape =", set_x_orig.shape)
+            # Check if the dataset has the expected dimensions and is non-empty
+            if set_x_orig.ndim < 3 or set_x_orig.size == 0:
+                print("Warning: skipping file", filename, "because it contains an empty or malformed dataset")
+                continue
+        # Reshape features as needed 
+        X = np.reshape(set_x_orig, (set_x_orig.shape[0], set_x_orig.shape[1], set_x_orig.shape[2], 1))
+        X_list.append(X)
+        Y_list.append(set_y_orig)
 
-    X_train = np.reshape(set_x_orig, (set_x_orig.shape[0], set_x_orig.shape[1], set_x_orig.shape[2], 1))
-    Y_train = set_y_orig#.reshape((1, set_y_orig.shape[0]))
-
+    if not X_list:
+        raise ValueError("No valid dataset files found.")
+        
+    X_train = np.concatenate(X_list, axis=0)
+    Y_train = np.concatenate(Y_list, axis=0)
     return X_train, Y_train
 
 def scale_linear_bycolumn(rawpoints, mins,maxs,high=1.0, low=0.0):

@@ -76,15 +76,15 @@ plt.grid()
 plt.show()
 
 # === Step 5: Identify Most Important Features ===
-feature_names = [f'Feature {i}' for i in range(X.shape[1])]  # Replace with actual feature names if available
+feature_names = [f'Feature {i}' for i in range(X.shape[1])] 
 pca_components = pd.DataFrame(pca.components_, columns=feature_names, index=[f'PC{i+1}' for i in range(pca.n_components)])
 
 # Show top 5 most important features for each principal component
-for i in range(5):  # Adjust number of PCs to inspect
+for i in range(5):  
     print(f"\n🔹 Top features for Principal Component {i+1}:")
-    print(pca_components.iloc[i].abs().nlargest(10))  # Show top 10 important features
-
-# === Step 6: Visualize PCA Projection (Optional) ===
+    print(pca_components.iloc[i].abs().nlargest(10))  
+    
+# === Step 6: Visualize PCA Projection ===
 plt.figure(figsize=(8,6))
 plt.scatter(X_pca[:,0], X_pca[:,1], c=y, cmap='coolwarm', alpha=0.5)
 plt.xlabel('Principal Component 1')

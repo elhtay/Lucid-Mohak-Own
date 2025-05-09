@@ -18,6 +18,11 @@
 # Training: python3 lucid_cnn.py --train ./sample-dataset/  --epochs 100 -cv 5
 # Testing: python3  lucid_cnn.py --predict ./sample-dataset/ --model ./sample-dataset/10t-10n-SYN2020-LUCID.h5
 
+
+# This file is originally part of the LUCID project, as mentioned above.
+# It has been modified to fit the needs of the master thesis project.
+# The original file can be found at: https://github.com/doriguzzi/lucid-ddos?tab=readme-ov-file#lucid-a-practical-lightweight-deep-learning-solution-for-ddos-attack-detection
+
 import tensorflow as tf
 import numpy as np
 import random as rn
@@ -25,7 +30,6 @@ import os
 import csv
 import pprint
 from util_functions import *
-import pandas as pd
 # Seed Random Numbers
 os.environ['PYTHONHASHSEED']=str(SEED)
 np.random.seed(SEED)
@@ -42,7 +46,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from lucid_dataset_parser import *
-
+from collections import Counter
 import tensorflow.keras.backend as K
 tf.random.set_seed(SEED)
 K.set_image_data_format('channels_last')
@@ -146,14 +150,6 @@ def main(argv):
             X_val, Y_val = load_dataset(dataset_folder + "/*" + '-val.hdf5')
 
             X_train, Y_train = shuffle(X_train, Y_train, random_state=SEED)
-            # Convert X_train to a DataFrame to access columns attribute
-            """X_train_reshaped = X_train.reshape(X_train.shape[0], -1) 
-            column_names = [f'Feature {i}' for i in range(X_train_reshaped.shape[1])] 
-            X_train_df = pd.DataFrame(X_train_reshaped, columns=column_names) 
-            print("Training columns:", X_train_df.columns)"""
-            
-            print(X_train.shape)
-            
             X_val, Y_val = shuffle(X_val, Y_val, random_state=SEED)
 
             # get the time_window and the flow_len from the filename
@@ -205,6 +201,7 @@ def main(argv):
             print("Best parameters: ", rnd_search_cv.best_params_)
             print("Best model path: ", best_model_filename)
             print("F1 Score of the best model on the validation set: ", f1_score_val)
+            print("Confusion Matrix: ", confusion_matrix(Y_true_val, Y_pred_val))
 
     if args.predict is not None:
         predict_file = open(OUTPUT_FOLDER + 'predictions-' + time.strftime("%Y%m%d-%H%M%S") + '.csv', 'a', newline='')
